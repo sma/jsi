@@ -1,0 +1,478 @@
+JSI in Dart (2013)
+==================
+
+## Syntax
+
+Ich hatte einigen Wochen meinen in JavaScript geschriebenen JavaScript-Interpreter (`jsi.js`) von JavaScript nach Dart (1.x) portiert. Für den eigentlichen Parser war das nicht schwer, die ursprüngliche JavaScript-Syntax war schnell mit Suchen und Ersetzen umgestellt. 
+
+Im Prinzip wird `function name(args)` zu `type name(type args)`, wobei man die Typen häufig weglassen kann, man also nur das Wort `function` löschen muss.
+
+### RegExp
+
+Da es bei Dart keine Literale für regulären Ausdrücke gibt, musste ich hier erst lernen, das Dart ein `new RegExp()` erfordert und wie man mit `/g` umgeht.
+
+Das hatte ein paar Auswirkungen auf den Quelltext:
+
+```js
+var RE = /.../g;
+
+function next() {
+  var match = RE.exec(source);
+  if (match) {
+    ...
+```
+=>
+```dart    
+final RE = new RegExp('...');
+
+Iterator<Match> _matches;
+
+String next() {
+  if (_matches == null) {
+    _matches = RE.allMatches(source).iterator;
+  }
+  if (_matches.moveNext()) {
+    var match = _matches.current;
+    ...
+```
+und
+```js
+if (/^\w+/.test(current)) {
+```        
+=>
+```dart
+if (new RegExp(r'^\w+').hasMatch(current)) {
+```
+
+### AST
+
+Die AST-Knoten, die in `jsi` einfach Objekte mit einer `type`-Property sind, habe ich durch Dart-Klassen ersetzt. Ich hätte auch weiterhin `Map`-Literale benutzen können, aber ich dachte mir, wenn schon, denn schon. Dart erfordert bei den Schlüsseln der `Map`-Literale immer Anführungszeichen. Das fand ich lästig. Diese Änderung hat etwa 100+ Zeilen hinzugefügt, war aber auch nicht weiter schwierig.
+
+Hier ist ein Beispiel:
+
+```js
+{type: block, stmts: stmts}
+{type: 'while', cond: ..., body: ...}
+```
+=>
+```dart
+class Block {
+  Block(this.statements);
+  final List<Statement> statements;
+}
+
+abstract class Statement {}
+
+class WhileStatement extends Statement {
+  WhileStatement(this.expr, this.whileBlock);
+  final Expression expr;
+  final Block whileBlock;
+}
+```
+
+## Editor-Situation
+
+Ich muss allerdings sagen, dass sowohl der Eclipse-basierte _DartEditor_ als auch das _IntelliJ-IDEA_-Plugin noch eine Zumutung sind. Eclipse war mit den 400+ Zeilen meiner Dart-Datei offenbar so überfordert, dass man nur noch in Zeitlupe Text eingeben konnte. IDEA ist schneller, braucht aber sehr lange, um über den externen Dart-Compiler die Fehler im Code zu finden. Da bin ich von Java besseres gewöhnt. So sind sie erst nach einiger Wartezeit zu sehen, verschwinden aber alle wieder, sobald man anfängt den Text zu ändern. Das trainiert das Gedächtnis! Zudem funktioniert das automatische Überspringen von schließenden Klammern nicht, was total lästig ist. So habe ich dann das meiste mit _TextMate_ geschrieben und stückweise in den DartEditor kopiert, um zu sehen, was noch falsch ist. Inzwischen gibt gab es zwei neue Versionen des DartEditors und er ist etwas schneller geworden. Bei IDEA hat sich leider nichts getan.
+
+## AST-Klassen
+
+Dank der AST-Klassen habe ich eine saubere Typ-Hierarchie, die zwischen _Blöcken_, _Ausdrücken_ und _Anweisungen_ unterscheidet, denen ich dann `evaluate`-Methoden hinzugefügt habe:
+
+```dart
+class Block {
+  ...
+  void evaluate(Context c) {
+    statements.forEach((s) => s.evaluate(c));
+  } 
+}
+
+abstract class Statement {
+  void evaluate(Context c);
+}
+
+abstract class Expression {
+  JSValue evaluate(Context c);
+}
+```
+
+Um zu erkennen, wo Zuweisungen an Ausdrücke möglich sind, habe ich das Protokoll `Target` eingeführt. Ein `Target` ist etwas, das auf der linken Seite einer Zuweisung stehen darf. Bislang hatte ich eine `set`-Methode bei `Expression`, die ggf. einen Laufzeitfehler warf.
+
+```dart
+abstract class Target {
+  void set(Context c, JSValue value);
+}
+
+class LiteralExpression extends Expression {
+  JSValue value;
+  LiteralExpression(this.value);
+  JSValue evaluate(Context c) => value;
+}
+
+class NameExpression extends Expression implements Target {
+  ...
+  JSValue evaluate(Context c) => c.get(name);
+  void set(Context c, JSValue value) { c.set(name, value); }
+}
+```
+
+Jetzt kann ich im Parser prüfen, ob ich eine gültige linke Seite habe (ein echter JavaScript-Interpreter macht das allerdings tatsächlich erst zur Laufzeit, wie mir Trial & Error zeigt):
+
+```dart
+Expression expr = parseExpr();
+Statement stmt;
+if (at('=')) {
+    if (expr is Target) {
+        stmt = new AssignStmt(expr as Target, parseExpr());
+    } else {
+        throw "Invalid left-hand side in assignment";
+    }
+}
+```
+
+Ich habe dann versucht, ein Laufzeitsystem zu implementieren, auf das ich in den `evaluate`-Methoden auch etwas Richtiges machen kann. Ich kann ja nun nicht einfach das eigene JavaScript-Laufzeitsystem benutzen. Dabei wollte ich dieses Mal den Ansatz fahren, für alles eigene Objekte basierend auf einem `JSValue` zu benutzen.
+
+```dart
+    abstract class JSValue { ... }
+    class JSUndefined extends JSValue { ... }
+    class JSBoolean extends JSValue { ... }
+    ...
+```
+
+In diesem Laufzeitsystem steckt dann viel von der Semantik der JavaScript-Objekte, die bei `jsi` ja direkt in der Host-Sprache JavaScript zur Verfügung stehen.
+
+## Kernspaltung
+
+Da der Parser mit 300 Zeilen plus etwa 300 Zeilen für die AST-Klassen inklusive alle `evaluate`-Methoden und inzwischen 300 Zeilen für das Laufzeitsystem viel zu viel für eine Datei waren, habe ich das aufgeteilt.
+
+Dart erlaubt es, in einer Datei eine `library` zu definieren, die dann andere Dateien einbindet:
+
+```dart
+library jsi;
+
+part 'rt.dart';
+part 'ast.dart';
+part 'parser.dart';
+
+main() {
+  ...
+}
+```
+
+Nun kann man jede dieser Dateien mit `part of jsi;` einleiten und alles zusammen bildet meine Bibliothek und dank der `main`-Methode auch mein Programm.
+
+## Unit-Tests
+
+Ob das Laufzeitsystem funktioniert, weiß ich nicht, denn ich habe das noch nicht fertig implementiert, geschweige denn getestet. Apropos, will man testen, kann man das `unittest`-Paket einbinden, muss dafür aber von einer einfachen Dart-Datei zu einem Dart-Projekt wechseln, welches eine `pubspec.yaml` genannte Datei benötigt, in der Abhängigkeiten definiert werden:
+
+```yaml
+name: jsi
+author: Stefan Matthias Aust
+description: jsi is a "good parts" JavaScript interpreter
+dependencies:
+  unittest: any
+```
+
+Der _DartEditor_ macht's automatisch, andernfalls muss man nun `pub install` in der Kommandozeile aufrufen und bekommt in einem Verzeichnis `packages` das Unit-Test-Packet plus dessen Abhängigkeiten installiert.
+
+Nun kann ich das Test-Paket mit `import package:unittest/unittest.dart` einbinden und so in einer weiteren `main`-Funktion benutzen:
+
+```dart
+main() {
+  test("some aspect of my application", () {
+    expect(functionUnderTest(), expectedResult);
+  });
+}
+```
+
+Wo ich übrigens relativ lange nach einem Fehler gesucht habe: Die Pakete werden in einem Verzeichnis namens `packages` (mit "s") abgelegt, beim Importieren ist es aber `package:` (ohne "s").
+
+## Laufzeitsystem
+
+So bilde ich JavaScript-Objekte in Dart nach.
+
+### Primitive Typen
+
+* `JSValue` ist die abstrakte Oberklasse für alle JavaScript-Werte. Wie man sieht, gibt es vordefinierte Methoden, um die Exemplare als Wert des jeweils passenden Dart-Typ zu interpretieren und um auf die _Properties_ eines JS-Objekts zuzugreifen:
+
+    ```dart
+    abstract class JSValue {
+      num numValue();
+      bool boolValue();
+      String stringValue();
+      JSValue getProperty(String name) => null;
+      bool setProperty(String name, JSValue value) => false;
+      bool deleteProperty(String name) => false;
+    }
+    ```
+* `JSUndefined` steht für den _Singleton_-Wert `undefined`:
+
+    ```dart
+    class JSUndefined extends JSValue {
+      numValue() => double.NAN;
+      boolValue() => false;
+      stringValue() => "undefined";
+    }
+    ```
+
+* `JSNull` repräsentiert den _Singleton_-Wert `null`:
+
+    ```dart
+    class JSNull extends JSValue {
+      numValue() => 0;
+      boolValue() => false;
+      stringValue() => "null";
+    }
+    ```
+
+* `JSBoolean` steht für `true` und `false` (sie sind _equatable_ und _hashable_):
+
+    ```dart
+    class JSBoolean extends JSValue {
+      JSBoolean(this.value);
+
+      final bool value;
+      
+      bool operator ==(JSBoolean other) => value == other.value;
+      int get hashCode => value.hashCode;
+      numValue() => value ? 1 : 0;
+      boolValue() => value;
+      stringValue() => value.toString();
+    }
+    ```
+
+* `JSNumber` repräsentiert Zahlen (inklusive `NaN` und `Infinity`):
+
+    ```dart
+    class JSNumber extends JSValue {
+      JSNumber(this.value);
+      final num value;
+      bool operator ==(JSNumber other) => value == other.value;
+      int get hashCode => value.hashCode;
+      numValue() => value;
+      boolValue() => value != 0 && !value.isNaN;
+      stringValue() {
+        if (value.isNaN) return "NaN";
+        if (value == double.INFINITY) return "Infinity";
+        if (value == double.NEGATIVE_INFINITY) return "-Infinity";
+        if (value == value.truncate())
+          return value.truncate().toString();
+        return value.toString();
+      }
+    }
+    ```
+
+* `JSString` steht schließlich für Zeichenketten. Paktischerweise hat Dart die selbe UTF-16-Kodierung wie JavaScript, daher müsste das alles direkt so passen. Man beachte, dass Strings eine `length`-_Property_ haben und ich über einen numerischen Index auf ein einzelnes Zeichen zugreifen kann:
+
+    ```dart
+    class JSString extends JSValue {
+      JSString(this.value);
+      final String value;
+      bool operator ==(JSString other) => value == other.value;
+      int get hashCode => value.hashCode;
+      numValue() {
+        String v = value.trim();
+        if (v.length == 0) return 0;
+        return double.parse(v);
+      }
+      boolValue() => !value.isEmpty;
+      stringValue() => value;
+      JSValue getProperty(String name) {
+        if (name == "length") return value.length;
+        int index = int.parse(name, onError: (_) => -1);
+        if (index >= 0 && index < value.length)
+          return new JSString(value.substring(index, index + 1));
+        return super.get(name);
+      }
+    }
+    ```
+
+So weit die primitiven Typen von JavaScript. Das ganze lässt sich IMHO recht elegant definieren. Ich muss für booleans, numbers und strings die Methoden `==` und `hashCode` überschreiben, damit ich diese Objekte in einer `Map` benutzen kann. `JSNull` und `JSUndefined` sind _Singletons_, wo dies nicht nötig ist.
+
+Eigentlich sollte ich auch `JSBoolean` zu zwei Singletons machen. Hier gibt es folgenden Trick bei Dart: Ich kann eine Factory statt eines normalen Konstruktors definieren:
+
+  ```dart
+  class JSBoolean {
+    static JSBoolean TRUE = const JSBoolean._(true);
+    static JSBoolean FALSE = const JSBoolean._(false);
+    final bool value;
+    factory JSBoolean(bool value) => value ? TRUE : FALSE;
+    const JSBoolean._(this.value);
+  }
+  ```
+
+Ob das alles funktioniert, weiß ich nicht, ich habe nicht so recht Lust, systematische Tests zu schreiben, auch wenn das eigentlich sehr befriedigend ist, dann zu sehen, dass alle Teile korrekt ineinandergreifen.
+
+### Objekt-Typen
+
+* Die Klasse `JSObject` repräsentiert JavaScript-Objekte:
+
+  ```dart
+  class JSObject extends JSValue {
+    JSObject([this.values = {}]);
+    final Map<String, JSValue> values;
+    numValue() => double.nan;
+    boolValue() => true;
+    stringValue() => '[object Object]';
+    JSValue getProperty(String name) => values[name];
+    bool setProperty(String name, JSValue value) {
+      values[name] = value;
+      return true;
+    };
+    bool deleteProperty(String name) {
+      return values.remove(name) != null;
+    };
+  }
+  ```
+
+* `JSArray` steht für Arrays:
+
+  ```dart
+  class JSArray extends JSObject {
+    JSArray(this.elements);
+    final List<JSValue> elements;
+    stringValue() => '[object Array]';
+    JSValue getProperty(String name) {
+      if (name == "length") return value.length;
+      int index = int.parse(name, onError: (_) => -1);
+      if (index >= 0 && index < value.length)
+        return elements[index];
+      return super.get(name);
+    }
+    bool setProperty(String name, JSValue value) {
+      int index = int.parse(name, onError: (_) => -1);
+      if (index < 0) return super.setProperty(name, value);
+      if (name == "length") {
+        elements.length = index;
+        return true;
+      }
+      while (index < elements.length) elements.add(UNDEFINED);
+      elements[index] = value;
+      return true;
+    }
+    bool delete(String name) {
+      int index = int.parse(name, onError: (_) => -1);
+      if (index >= 0 && index < elements.length) elements[index] = UNDEFINED;
+      return true;
+    }
+  }
+  ```
+
+### Funktionen
+
+Die Klasse `JSFunction` steht für Funktionen.
+
+Da ich benutzerdefinierte Funktionen brauche und welche, die vom Laufzeitsystem definiert werden, wollte ich einen Dart-Funktionstyp definieren und habe mir daran eine Zeit lang echt die Zähne ausgebissen. Dabei war es eigentlich sehr einfach:
+
+```dart
+typedef JSValue Func(JSValue receiver, JSArray arguments, Context c);
+```
+
+Dies definiert den Datentyp `Func` als eine Funktion, die ein `JSValue` als Rückgabetyp hat und drei Argumente vom Typ `JSValue`, `JSArray` und `Context` erwartet. Dann sieht `JSFunction` so aus:
+
+```dart
+class JSFunction extends JSObject {
+  JSFunction(this.name, this.length, this.func);
+  final String name;
+  final int length;
+  final Func func;
+  stringValue() => '[object Function]';
+}
+```
+
+So erzeuge ich dann im Parser eine benutzerdefinierte Funktion:
+
+```dart
+class FunctionExpression extends Expression {
+  JSValue evaluate(Context ctx) {
+    Func func = (JSValue receiver, JSArray arguments, Context callerCtx) {
+      Context funcCtx = new Context(ctx);
+      funcCtx.bind("this", receiver);
+      funcCtx.bind("arguments", arguments);
+      for (int i = 0; i < params.length; i++) {
+        funcCtx.bind(params[i], arguments.at(i));
+      }
+      block.evaluate(funcCtx);
+      callerCtx.value = funcCtx.value;
+      callerCtx.state = funcCtx.state;
+      if (callerCtx.state == Context.STATE_RETURN) {
+        callerCtx.state = 0;
+      }
+      return callerCtx.value;
+    };
+    return new JSFunction(name, params.length, func);
+  }
+}
+```
+
+Für eine eingebaute Funktion muss ich einfach eine andere Dart-Funktion mit der selben Signatur `Func` angeben. So z.B. für `forEach`:
+
+```dart
+var Array_prototype_forEach = 
+  new JFunction("forEach", null, (JSValue receiver, JSArray arguments, Context ctx) {
+    if (!(receiver is JSArray)) {
+      ctx.state = Context.STATE_EXCEPTION;
+      return new JSString("TypeError: forEach called on something invalid");
+    }
+    JSArray array = receiver;
+    JSValue f = arguments.at(0);
+    JSValue a = arguments.at(1);
+    if (!(f is JSFunction)) {
+      ctx.state = Context.STATE_EXCEPTION;
+      return new JSString("TypeError: ${f.stringValue()} is not a function");
+    }
+    for (int i = 0; i < array.elements.length; i++) {
+      ctx.call(f, a, new JSArray([array.elements[i], new JSNumber(i), array]));
+    }
+    return JSValue.NULL;
+  });
+```
+
+(Diese Funktion gibt es nur hier im Dokument, ich habe sie eben so wenig umgesetzt wie das Exception-Handling.)
+
+### Der Kontext
+
+Alle AST-Knoten werte ich ein einem `Context` aus, der Bindungen für Variablen kennt und weiß, welchen Zustand die Auswertung hat. Dies kann `NORMAL`, `RETURN`, `BREAK` oder `EXCEPTION` sein. In den letzten drei Fällen muss ich die normale (rekursive) Auswertung der AST-Knoten abbrechen und sofort einen Wert zurückgeben.
+
+```dart
+class Context {
+  Context(this.parent);
+
+  final Context parent;
+  int state;
+  JSValue value;
+  final JSObject bindings = new JSObject();
+
+  JSObject get global => parent != null ? parent.global : bindings;
+
+  void bind(String name, JSValue value) {
+    bindings.values[name] = value;
+  }
+
+  JSValue get(String name) {
+    JSValue value = bindings.values[name];
+    if (value != null) return value;
+    if (parent != null) return parent.get(name);
+    return null; // name not found
+  }
+}
+```
+
+## 2021
+
+An dieser Stelle habe ich 2013 aufgehört. Der Parser kann `jsi.js` einlesen und wieder ausgeben und das Ergebnis sieht ähnlich genug aus, aber er kann sich nicht selbst ausführen. Startet man `jsi.js` mit Node, liest sich jsi selbst ein und führt das aus, was dazu führt, dass er sich nochmals selbst einliest und das nochmals ausführt, sich also der Interpreter interpretiert. Ich verstehe ehrlich gesagt nicht, warum dass nach drei _inceptions_ dann endet, aber das tut es.
+
+In 2021 habe ich nun nach der Portierung auf modernes Dart 2.13 den Dart-Interpreter soweit ergänzt, dass auch er in der Lage ist, `jsi.js` nicht nur einzulesen, sondern auch soweit auszuführen, dass dieser sich selbst nochmals einlesen und nochmals ausführen kann.
+
+Ich musste dazu eine Reihe von Funktionen und Methoden schreiben.
+
+* Im globalen Kontext müssen `undefined`, `global` und `this` existieren.
+* Es muss `console.log()` funktionieren.
+* Es muss `require` geben, dass etwas liefert, dass dann `readFileSync` versteht, was dann erneut den Quelltext von `jsi.js` liefert.
+* Es muss `RegExp` geben, das ein Objekt liefert, dass `exec` und `test` als Methoden hat und wo erstere ein Objekt liefert, dass _capture groups_ sowie einen `index` enthält. Das hat mich einige Stunden Arbeit gekostet.
+* Ein String muss `length`, `slice` und `replace` verstehen.
+* Ein Array muss `length`, `push` und `map` verstehen.
+* Eine Funktion muss `apply` verstehen.
+* Es muss ein `Object` geben, das eine Methode `create` hat und Objekte über `__proto__` verknüpft und Objekte müssen `hasOwnProperty` verstehen.
+* Es muss eine globale Funktion `parseFloat` geben.
+
+All dies habe ich hinzugefügt, ohne dabei korrekt Klassen bzw. Funktionen mit einem `constructor` und `prototype` zu haben oder auch nur einmal wirklich auf einen `prototype` zu achten, sondern einfach alles direkt in den Dart-`JSValue`-Unterklassen hinzugefügt. Das müsste man also noch einmal neu machen.
