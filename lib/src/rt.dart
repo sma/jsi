@@ -22,7 +22,7 @@ JSObject global() {
 /**
  * Base class of all ECMAscript values.
  */
-abstract class JSValue {
+sealed class JSValue {
   const JSValue();
 
   static const JSUndefined UNDEFINED = JSUndefined._();
@@ -69,7 +69,7 @@ abstract class JSValue {
 /**
  * Class of the singleton `undefined` value.
  */
-class JSUndefined extends JSValue {
+final class JSUndefined extends JSValue {
   const JSUndefined._();
 
   @override
@@ -85,7 +85,7 @@ class JSUndefined extends JSValue {
 /**
  * Class of the singleton `null` value.
  */
-class JSNull extends JSValue {
+final class JSNull extends JSValue {
   const JSNull._();
 
   @override
@@ -101,7 +101,7 @@ class JSNull extends JSValue {
 /**
  * Class of the Boolean values `true` and `false`.
  */
-class JSBoolean extends JSValue {
+final class JSBoolean extends JSValue {
   factory JSBoolean(bool value) => value ? JSValue.TRUE : JSValue.FALSE;
 
   const JSBoolean._(this.value);
@@ -127,7 +127,7 @@ class JSBoolean extends JSValue {
 /**
  * Class of numbers (including `NaN` and `Infinity`).
  */
-class JSNumber extends JSValue {
+final class JSNumber extends JSValue {
   const JSNumber(this.value);
 
   final num value;
@@ -157,7 +157,7 @@ class JSNumber extends JSValue {
 /**
  * Class of strings.
  */
-class JSString extends JSValue {
+final class JSString extends JSValue {
   const JSString(this.value);
 
   final String value;
@@ -212,7 +212,7 @@ class JSString extends JSValue {
 /**
  * Class of objects with properties.
  */
-class JSObject extends JSValue {
+final class JSObject extends JSValue {
   const JSObject(this.values);
 
   final Map<String, JSValue> values;
@@ -260,7 +260,7 @@ class JSObject extends JSValue {
  * Class of arrays which have indexed elements and a special `length` property in addition to
  * generic object properties.
  */
-class JSArray extends JSObject {
+final class JSArray extends JSObject {
   JSArray(this.elements) : super({});
 
   final List<JSValue> elements;
@@ -325,7 +325,7 @@ typedef Func = JSValue Function(JSValue receiver, JSArray arguments, JSObject en
  * `length` property in addition to generic object properties. Use [call] 
  * to call the function's Dart function.
  */
-class JSFunction extends JSObject {
+final class JSFunction extends JSObject {
   JSFunction(this.name, this.length, this.func) : super({});
 
   final String? name;

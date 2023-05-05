@@ -18,7 +18,7 @@ JSBoolean doEqual(JSValue a, JSValue b) {
 /**
  * A sequence of statements.
  */
-class Block {
+final class Block {
   const Block(this.statements);
 
   final List<Statement> statements;
@@ -39,13 +39,13 @@ class Block {
 /**
  * A statement.
  */
-abstract class Statement {
+sealed class Statement {
   const Statement();
 
   JSValue run(JSObject env);
 }
 
-class VarStatement extends Statement {
+final class VarStatement extends Statement {
   const VarStatement(this.name, this.expr);
 
   final String name;
@@ -61,7 +61,7 @@ class VarStatement extends Statement {
   }
 }
 
-class WhileStatement extends Statement {
+final class WhileStatement extends Statement {
   const WhileStatement(this.expr, this.whileBlock);
 
   final Expr expr;
@@ -84,7 +84,7 @@ class WhileStatement extends Statement {
   }
 }
 
-class IfStatement extends Statement {
+final class IfStatement extends Statement {
   const IfStatement(this.expr, this.thenBlock, this.elseBlock);
 
   final Expr expr;
@@ -103,7 +103,7 @@ class IfStatement extends Statement {
   }
 }
 
-class ThrowStatement extends Statement {
+final class ThrowStatement extends Statement {
   const ThrowStatement(this.expr);
 
   final Expr expr;
@@ -117,7 +117,7 @@ class ThrowStatement extends Statement {
   }
 }
 
-class ReturnStatement extends Statement {
+final class ReturnStatement extends Statement {
   const ReturnStatement(this.expr);
 
   final Expr? expr;
@@ -133,7 +133,7 @@ class ReturnStatement extends Statement {
   }
 }
 
-class BreakStatement extends Statement {
+final class BreakStatement extends Statement {
   @override
   String toString() => 'break;';
 
@@ -144,7 +144,7 @@ class BreakStatement extends Statement {
   }
 }
 
-class AssignStatement extends Statement {
+final class AssignStatement extends Statement {
   const AssignStatement(this.target, this.expr);
 
   final Target target;
@@ -160,7 +160,7 @@ class AssignStatement extends Statement {
   }
 }
 
-class ExprStatement extends Statement {
+final class ExprStatement extends Statement {
   const ExprStatement(this.expr);
 
   final Expr expr;
@@ -184,13 +184,13 @@ abstract class Target {
 /**
  * An expression.
  */
-abstract class Expr {
+sealed class Expr {
   const Expr();
 
   JSValue run(JSObject env);
 }
 
-class LitExpr extends Expr {
+final class LitExpr extends Expr {
   const LitExpr(this.value);
 
   final JSValue value;
@@ -204,7 +204,7 @@ class LitExpr extends Expr {
   }
 }
 
-class NameExpr extends Expr implements Target {
+final class NameExpr extends Expr implements Target {
   const NameExpr(this.name);
 
   final String name;
@@ -237,7 +237,7 @@ class NameExpr extends Expr implements Target {
   }
 }
 
-class EqualExpr extends Expr {
+final class EqualExpr extends Expr {
   const EqualExpr(this.left, this.right);
 
   final Expr left;
@@ -252,7 +252,7 @@ class EqualExpr extends Expr {
   }
 }
 
-class LessExpr extends Expr {
+final class LessExpr extends Expr {
   const LessExpr(this.left, this.right);
 
   final Expr left;
@@ -267,7 +267,7 @@ class LessExpr extends Expr {
   }
 }
 
-class AddExpr extends Expr {
+final class AddExpr extends Expr {
   const AddExpr(this.left, this.right);
 
   final Expr left;
@@ -287,7 +287,7 @@ class AddExpr extends Expr {
   }
 }
 
-class MulExpr extends Expr {
+final class MulExpr extends Expr {
   const MulExpr(this.left, this.right);
 
   final Expr left;
@@ -302,7 +302,7 @@ class MulExpr extends Expr {
   }
 }
 
-class PosExpr extends Expr {
+final class PosExpr extends Expr {
   const PosExpr(this.expr);
 
   final Expr expr;
@@ -317,7 +317,7 @@ class PosExpr extends Expr {
   }
 }
 
-class NegExpr extends Expr {
+final class NegExpr extends Expr {
   const NegExpr(this.expr);
 
   final Expr expr;
@@ -331,7 +331,7 @@ class NegExpr extends Expr {
   }
 }
 
-class NotExpr extends Expr {
+final class NotExpr extends Expr {
   const NotExpr(this.expr);
 
   final Expr expr;
@@ -345,7 +345,7 @@ class NotExpr extends Expr {
   }
 }
 
-class RefExpr extends Expr implements Target {
+final class RefExpr extends Expr implements Target {
   const RefExpr(this.expr, this.index);
 
   final Expr expr;
@@ -381,7 +381,7 @@ class RefExpr extends Expr implements Target {
   }
 }
 
-class ArrayExpr extends Expr {
+final class ArrayExpr extends Expr {
   const ArrayExpr(this.args);
 
   final List<Expr> args;
@@ -395,7 +395,7 @@ class ArrayExpr extends Expr {
   }
 }
 
-class ObjectExpr extends Expr {
+final class ObjectExpr extends Expr {
   const ObjectExpr(this.args);
 
   final List<Expr> args;
@@ -417,7 +417,7 @@ class ObjectExpr extends Expr {
   }
 }
 
-class InvocationExpr extends Expr {
+final class InvocationExpr extends Expr {
   const InvocationExpr(this.expr, this.args);
 
   final Expr expr;
@@ -452,7 +452,7 @@ class InvocationExpr extends Expr {
   }
 }
 
-class FunctionExpr extends Expr {
+final class FunctionExpr extends Expr {
   const FunctionExpr(this.name, this.params, this.block);
 
   final String? name;
