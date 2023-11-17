@@ -1,5 +1,5 @@
 // Copyright 2013 by Stefan Matthias Aust
-part of jsi;
+part of '../jsi.dart';
 
 extension on JSObject {
   bool get isReturning => values.containsKey('return');

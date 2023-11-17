@@ -1,5 +1,5 @@
 // Copyright 2013, 2021 by Stefan Matthias Aust
-part of jsi;
+part of '../jsi.dart';
 
 /**
  * Returns an initialized global object.
