@@ -109,7 +109,7 @@ final class JSBoolean extends JSValue {
   final bool value;
 
   @override
-  bool operator ==(dynamic other) => other is JSBoolean && value == other.value;
+  bool operator ==(Object other) => other is JSBoolean && value == other.value;
 
   @override
   int get hashCode => value.hashCode;
@@ -133,7 +133,7 @@ final class JSNumber extends JSValue {
   final num value;
 
   @override
-  bool operator ==(dynamic other) => other is JSNumber && value == other.value;
+  bool operator ==(Object other) => other is JSNumber && value == other.value;
 
   @override
   int get hashCode => value.hashCode;
@@ -163,7 +163,7 @@ final class JSString extends JSValue {
   final String value;
 
   @override
-  bool operator ==(dynamic other) => other is JSString && value == other.value;
+  bool operator ==(Object other) => other is JSString && value == other.value;
 
   @override
   int get hashCode => value.hashCode;

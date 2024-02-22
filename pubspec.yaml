@@ -3,7 +3,7 @@ description: |
   A "good parts" JavaScript interpreter
   author: Stefan Matthias Aust
 environment:
-  sdk: ">=3.2.0 <4.0.0"
+  sdk: ">=3.3.0 <4.0.0"
 
 dev_dependencies:
   lints: ^3.0.0
